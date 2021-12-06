@@ -1,0 +1,154 @@
+
+%macro imp(infile, dt_name);
+
+	PROC IMPORT OUT=&dt_name
+	
+	datafile = "/folders/myfolders/Projet/&infile..csv"
+	
+	DBMS=csv REPLACE;
+	
+	GETNAMES=YES;
+	
+	run;
+
+%mend imp;
+
+%imp(Acc, accident_2017)
+%imp(Cas, casualties_2017)
+%imp(Veh, vehicules_2017)
+%imp(dftRoadSafetyData_Accidents_2018, accident_2018)
+%imp(dftRoadSafetyData_Casualties_2018, casualties_2018)
+%imp(dftRoadSafetyData_Vehicles_2018, vehicules_2018)
+%imp(Road Safety Data - Accidents 2019, accident_2019)
+%imp(Road Safety Data - Casualties 2019, casualties_2019)
+%imp(Road Safety Data- Vehicles 2019, vehicules_2019)
+
+%imp(Local_Authority_Highway, Local_Authority_Highway_label)
+
+run;
+
+data accidents;
+	set work.accident_2017 work.accident_2018 work.accident_2019;
+	call symputx('Month_Date', put(date, mmyys7.));
+run;
+
+data vehicles;
+	set work.vehicules_2017 work.vehicules_2018 work.vehicules_2019;
+run;
+
+data casualties;
+	set work.casualties_2017 work.casualties_2018 work.casualties_2019;
+run;
+
+proc sort data=work.accident_2019;
+	by Accident_Index;
+run;
+
+proc sort data=work.vehicules_2019;
+	by Accident_Index;
+run;
+
+proc sort data=work.casualties_2019;
+	by Accident_Index;
+run;
+
+data accidents_vehicules_2019;
+	merge work.accident_2019 work.vehicules_2019;
+	by Accident_Index;
+run;
+
+data accidents_casualties_2019;
+	merge work.accident_2019 work.casualties_2019;
+	by Accident_Index;
+run;
+
+proc sql outobs=5;
+	create table work.accidents_top_5 as
+	select * from work.accidents;
+quit;
+
+proc sort data=work.accident_2019;
+	by Local_Authority__District_;
+run;
+
+proc summary data=work.accident_2019;
+	class Local_Authority__Highway_;
+	var Accident_Severity;
+	output out=accident_2019_gravity N=Accident_Severity;
+run;
+
+proc means data=work.accidents mean vardef=weight;
+	var Accident_Severity;
+	output out=accident_2019_gravity_means;
+run;
+
+proc means data=WORK.ACCIDENT_2019 mean;
+	var Accident_Severity;
+	class Local_Authority__Highway_;
+run;
+
+proc means data=WORK.ACCIDENTS_VEHICULES_2019 mean;
+	var Accident_Severity;
+	class Age_of_Vehicle;
+run;
+
+
+
+proc sgplot data=WORK.ACCIDENTS;
+	vline Date /;
+	yaxis grid;
+run;
+
+
+/*Accident-severity / speed limitation*/
+proc sgplot data=WORK.ACCIDENTS_CASUALTIES_2019;
+	vline Speed_limit / group=Accident_Severity;
+	yaxis grid;
+run;
+
+proc sql;
+	create table uknames as
+		select distinct a.Local_Authority__Highway_ as id, mean(a.Longitude) as Longitude, mean(a.Latitude) as Latitude, l.Label, count(a.Accident_Severity) as n,mean(a.Accident_Severity) as accident_severity
+		from Accidents a join LOCAL_AUTHORITY_HIGHWAY_LABEL l on a.Local_Authority__Highway_=l.Code
+		group by a.Local_Authority__Highway_;
+quit;
+
+proc sql;
+	create table count_severity as
+		select distinct Local_Authority__Highway_, Accident_Severity, count(Accident_Severity) as n, mean(Accident_Severity) as average
+		from Accidents
+		group by Local_Authority__Highway_, Accident_Severity;
+quit;
+
+ods graphics / reset width=8in height=12in;
+
+proc sgmap plotdata=WORK.UKNAMES mapdata=WORK.ACCIDENT_2019_GRAVITY;
+	openstreetmap;
+	choromap / mapid=Local_Authority__Highway_;
+	text x=xc y=yc text=Label / textattrs=GraphValueText;
+run;
+
+proc sgmap plotdata=WORK.UKNAMES maprespdata=UKNAMES;
+	openstreetmap;
+	choromap accident_severity/ mapid=id id=id;
+	text x=xc y=yc text=Label / textattrs=GraphValueText;
+run;
+
+ods graphics / reset;
+/*
+	create table ukmap as
+		select m.*, idname
+		from mapssas.uk m natural join mapssas.uk2 t;
+
+
+ods graphics / reset width=764px height=768px;
+
+proc sgmap plotdata=WORK.ACCIDENT_2019;
+	openstreetmap;
+	title 'Accident severity';
+	bubble x=Longitude y=Latitude size=Accident_Severity/ 
+		fillattrs=(color=CX0047e0) transparency=1.0;
+run;
+
+ods graphics / reset;
+title;*/
